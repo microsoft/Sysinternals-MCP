@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+    "server",
+    "tools/dbgview",
+    "tools/test_debug_app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Mark Russinovich"]
+repository = "https://github.com/markrussinovich/sysinternals-mcp"
+
+[workspace.dependencies]
+tokio = { version = "1.43", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = "0.8"
+regex = "1.11"
+sysinfo = "0.33"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2.0"
+parking_lot = "0.12"

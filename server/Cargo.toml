@@ -1,0 +1,22 @@
+[package]
+name = "sysinternals-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Sysinternals MCP Server - Windows system tools for AI assistants"
+
+[[bin]]
+name = "sysinternals-mcp"
+path = "src/main.rs"
+
+[dependencies]
+dbgview = { path = "../tools/dbgview" }
+# Use git version for latest protocol version support (2025-11-25)
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["server", "macros", "transport-io"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = "1.0"
