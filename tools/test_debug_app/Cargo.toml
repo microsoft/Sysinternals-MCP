@@ -1,0 +1,21 @@
+[package]
+name = "test-debug-app"
+version = "0.1.0"
+edition = "2021"
+description = "Debug Output Test Application for MCP Server Testing"
+license = "MIT"
+
+[[bin]]
+name = "test-debug-app"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+rand = "0.8"
+chrono = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.59", features = [
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Threading",
+] }
