@@ -2,7 +2,7 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use sysinfo::{System, Pid};
+use sysinfo::System;
 
 /// Information about a running process
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -28,7 +28,7 @@ pub fn list_processes(name_filter: Option<&str>) -> Vec<ProcessInfo> {
         .iter()
         .filter_map(|(pid, process)| {
             let name = process.name().to_string_lossy().into_owned();
-            
+
             // Apply name filter if specified
             if let Some(ref filter) = filter_lower {
                 if !name.to_lowercase().contains(filter) {
