@@ -35,12 +35,12 @@ impl SysinternalsMcpServer {
     pub fn new() -> Self {
         let buffer = Arc::new(RingBuffer::with_default_capacity());
         let session_manager = Arc::new(SessionManager::new(buffer));
-        Self { 
+        Self {
             session_manager,
             tool_router: Self::tool_router(),
         }
     }
-    
+
     /// List available tools for manual protocol handling
     pub fn list_tools(&self) -> Vec<Value> {
         vec![
@@ -174,7 +174,7 @@ impl SysinternalsMcpServer {
             })
         ]
     }
-    
+
     /// Call a tool by name with arguments for manual protocol handling
     pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, String> {
         match name {
@@ -241,7 +241,7 @@ impl SysinternalsMcpServer {
                 let session = self.session_manager
                     .get_session(session_id)
                     .map_err(|e| e.to_string())?;
-                
+
                 let include_patterns: Vec<String> = arguments.get("include_patterns")
                     .and_then(|v| v.as_array())
                     .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
@@ -258,14 +258,14 @@ impl SysinternalsMcpServer {
                     .and_then(|v| v.as_array())
                     .map(|arr| arr.iter().filter_map(|v| v.as_u64().map(|n| n as u32)).collect())
                     .unwrap_or_default();
-                
+
                 let filters = FilterSet {
                     include_patterns,
                     exclude_patterns,
                     process_names,
                     process_pids,
                 };
-                
+
                 session.set_filters(filters).map_err(|e| e.to_string())?;
                 Ok(json!({
                     "content": [{
@@ -559,9 +559,15 @@ impl ServerHandler for SysinternalsMcpServer {
             instructions: Some(
                 "Sysinternals MCP Server provides Windows system tools for AI assistants. \
                 Currently includes DebugView functionality to capture and filter Windows debug \
-                output (OutputDebugString). Create a session to start capturing, then use \
-                get_output to retrieve messages. Set filters to focus on specific processes \
-                or message patterns.".into()
+                output (OutputDebugString). \
+                \n\
+                Workflow: \
+                1. Create a session with create_session. \
+                2. If the user mentions a specific process name, application, or PID, \
+                   ALWAYS call set_filters with the appropriate process_names or process_pids \
+                   BEFORE calling get_output. Use list_processes to find PIDs if needed. \
+                3. Call get_output to retrieve filtered debug messages. \
+                4. When done, call destroy_session to clean up.".into()
             ),
         }
     }
@@ -580,12 +586,12 @@ async fn main() -> anyhow::Result<()> {
     // Use manual initialization to handle newer MCP protocol versions (2025-11-25+)
     // that rmcp doesn't yet support. We handle the initialize handshake ourselves,
     // then create a custom transport for the rest.
-    
+
     let stdin = stdin();
     let stdout = stdout();
     let mut reader = BufReader::new(stdin);
     let mut stdout = stdout;
-    
+
     // Read lines until we get the initialize request
     let mut line = String::new();
     loop {
@@ -594,26 +600,26 @@ async fn main() -> anyhow::Result<()> {
         if n == 0 {
             return Err(anyhow::anyhow!("EOF before initialization"));
         }
-        
+
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        
+
         // Try to parse as JSON-RPC
         let request: Value = serde_json::from_str(trimmed)?;
-        
+
         if request.get("method").and_then(|m| m.as_str()) == Some("initialize") {
             tracing::info!("Received initialize request, handling manually");
-            
+
             let request_id = request.get("id").cloned().unwrap_or(json!(1));
             let client_protocol = request
                 .pointer("/params/protocolVersion")
                 .and_then(|v| v.as_str())
                 .unwrap_or("2024-11-05");
-            
+
             tracing::info!("Client protocol version: {}", client_protocol);
-            
+
             // Respond with our capabilities using a compatible protocol version
             // We'll use the latest version we know rmcp supports
             let response = json!({
@@ -630,22 +636,22 @@ async fn main() -> anyhow::Result<()> {
                         "name": "sysinternals-mcp",
                         "version": env!("CARGO_PKG_VERSION")
                     },
-                    "instructions": "Sysinternals MCP Server provides Windows system tools for AI assistants. Currently includes DebugView functionality to capture and filter Windows debug output (OutputDebugString). Create a session to start capturing, then use get_output to retrieve messages. Set filters to focus on specific processes or message patterns."
+                    "instructions": "Sysinternals MCP Server provides Windows system tools for AI assistants. Currently includes DebugView functionality to capture and filter Windows debug output (OutputDebugString).\n\nWorkflow:\n1. Create a session with create_session.\n2. If the user mentions a specific process name, application, or PID, ALWAYS call set_filters with the appropriate process_names or process_pids BEFORE calling get_output. Use list_processes to find PIDs if needed.\n3. Call get_output to retrieve filtered debug messages.\n4. When done, call destroy_session to clean up.\n\nWhen the user asks for debug output from a specific app (e.g. 'get debug output from myapp'), set process_names filter to ['myapp'] so only that app's messages are returned."
                 }
             });
-            
+
             let response_str = serde_json::to_string(&response)?;
             stdout.write_all(response_str.as_bytes()).await?;
             stdout.write_all(b"\n").await?;
             stdout.flush().await?;
-            
+
             tracing::info!("Sent initialize response");
             break;
         } else {
             tracing::warn!("Unexpected message before initialize: {}", trimmed);
         }
     }
-    
+
     // Wait for initialized notification
     loop {
         line.clear();
@@ -653,14 +659,14 @@ async fn main() -> anyhow::Result<()> {
         if n == 0 {
             return Err(anyhow::anyhow!("EOF before initialized notification"));
         }
-        
+
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        
+
         let msg: Value = serde_json::from_str(trimmed)?;
-        
+
         if msg.get("method").and_then(|m| m.as_str()) == Some("notifications/initialized") {
             tracing::info!("Received initialized notification");
             break;
@@ -668,12 +674,12 @@ async fn main() -> anyhow::Result<()> {
             tracing::warn!("Unexpected message during init: {}", trimmed);
         }
     }
-    
+
     tracing::info!("Initialization complete, starting main server loop");
-    
+
     // Now run the server with manual message handling
     let server = SysinternalsMcpServer::new();
-    
+
     // Process remaining messages manually
     loop {
         line.clear();
@@ -682,12 +688,12 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("EOF received, shutting down");
             break;
         }
-        
+
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        
+
         let request: Value = match serde_json::from_str(trimmed) {
             Ok(v) => v,
             Err(e) => {
@@ -695,10 +701,10 @@ async fn main() -> anyhow::Result<()> {
                 continue;
             }
         };
-        
+
         let method = request.get("method").and_then(|m| m.as_str());
         let request_id = request.get("id").cloned();
-        
+
         let response = match method {
             Some("tools/list") => {
                 // Get tools from the server
@@ -720,7 +726,7 @@ async fn main() -> anyhow::Result<()> {
                     .pointer("/params/arguments")
                     .cloned()
                     .unwrap_or(json!({}));
-                
+
                 match server.call_tool(tool_name, arguments).await {
                     Ok(result) => {
                         json!({
@@ -783,7 +789,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         };
-        
+
         let response_str = serde_json::to_string(&response)?;
         stdout.write_all(response_str.as_bytes()).await?;
         stdout.write_all(b"\n").await?;
